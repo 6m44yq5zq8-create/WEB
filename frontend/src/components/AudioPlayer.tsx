@@ -285,7 +285,6 @@ export default function AudioPlayer({ file, onClose }: AudioPlayerProps) {
         <div className="max-w-4xl mx-auto glass-card p-6">
           <audio
             ref={audioRef}
-            src={streamSrc}
             preload="metadata"
           />
 
