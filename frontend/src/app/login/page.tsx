@@ -105,12 +105,24 @@ export default function LoginPage() {
     try {
       await login(password, false);
       setIsLoading(false);
-      // If browser supports Passkey, redirect to passkey registration page
-      if (window.PublicKeyCredential) {
-        router.push('/passkey/register');
-      } else {
-        router.push('/');
+
+      // If browser supports Passkey and we are in a secure context, pre-check registration options
+      const supportsPasskey = !!window.PublicKeyCredential && (window.isSecureContext || window.location.hostname === 'localhost');
+      if (supportsPasskey) {
+        try {
+          const optsRes = await apiClient.get('/api/auth/passkey/register/options');
+          if (optsRes.status === 200 && optsRes.data && optsRes.data.challenge) {
+            // Redirect to dedicated registration flow
+            router.push('/passkey/register');
+            return;
+          }
+        } catch (e) {
+          // If server-side options call fails (401/403), fall back to home
+          console.warn('Passkey registration options not available', e);
+        }
       }
+      // fallback: go to home
+      router.push('/');
     } catch (err: any) {
       setError(err.message || 'Invalid password');
       setIsLoading(false);
