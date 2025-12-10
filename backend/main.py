@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Optional, List
 from datetime import datetime, timedelta
 
-from fastapi import FastAPI, HTTPException, Depends, Header, Query, Request
+from fastapi import FastAPI, HTTPException, Depends, Header, Query, Request, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, FileResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -18,6 +18,16 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
 from config import settings
+import base64
+import secrets
+import json
+from webauthn_store import store_credential, get_all_credentials, get_credential_by_id, update_sign_count
+
+# Challenge store for register/login (simple in-memory store for single-user system)
+webauthn_challenges = {
+    'register': None,
+    'login': None
+}
 from auth import create_access_token, verify_token, check_access_password
 
 # Initialize rate limiter
@@ -182,6 +192,22 @@ async def root():
         "status": "operational"
     }
 
+
+def b64encode(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b'=').decode('utf-8')
+
+
+def b64decode(data: str) -> bytes:
+    padding = '=' * (-len(data) % 4)
+    return base64.urlsafe_b64decode(data + padding)
+
+
+def get_rp_id():
+    # Derive rp_id from FRONTEND_URL host
+    from urllib.parse import urlparse
+    parsed = urlparse(settings.FRONTEND_URL)
+    return parsed.hostname
+
 @app.post("/api/auth/login", response_model=LoginResponse)
 @limiter.limit("5/minute")
 async def login(request: Request, login_data: LoginRequest):
@@ -209,6 +235,152 @@ async def login(request: Request, login_data: LoginRequest):
         token=token,
         message="Login successful"
     )
+
+
+@app.get('/api/auth/passkey/exists')
+async def passkey_exists():
+    creds = get_all_credentials()
+    return {'exists': len(creds) > 0}
+
+
+@app.get('/api/auth/passkey/register/options')
+async def passkey_register_options():
+    # Generate a new challenge
+    challenge_bytes = secrets.token_bytes(32)
+    challenge = b64encode(challenge_bytes)
+    webauthn_challenges['register'] = challenge
+
+    rp = {
+        'name': 'Personal Cloud Storage',
+        'id': get_rp_id()
+    }
+    user_handle = b64encode(b'site_user')
+
+    options = {
+        'challenge': challenge,
+        'rp': rp,
+        'user': {
+            'id': user_handle,
+            'name': 'site_user',
+            'displayName': 'site_user'
+        },
+        'pubKeyCredParams': [
+            {'type': 'public-key', 'alg': -7},  # ES256
+            {'type': 'public-key', 'alg': -257} # RS256
+        ],
+        'authenticatorSelection': {'authenticatorAttachment': 'platform', 'userVerification': 'preferred'},
+        'timeout': 60000,
+        'attestation': 'direct'
+    }
+
+    return options
+
+
+@app.post('/api/auth/passkey/register/verify')
+async def passkey_register_verify(request: Request, payload: dict = Body(...)):
+    try:
+        # This endpoint verifies the attestation object from the client and stores credential
+        # Payload is expected to be the registration response from navigator.credentials.create()
+        expected_challenge = webauthn_challenges.get('register')
+        if not expected_challenge:
+            raise HTTPException(status_code=400, detail="Missing challenge; request registration options first")
+
+        # We'll verify using the webauthn library
+        from webauthn import verify_registration_response, WebAuthnRegistrationResponse
+
+        # Construct response object as expected by the verification library
+        registration_response = payload
+
+        # expected values
+        expected_origin = settings.FRONTEND_URL
+        expected_rp_id = get_rp_id()
+
+        verification = verify_registration_response(
+            credential=registration_response,
+            expected_challenge=expected_challenge,
+            expected_origin=expected_origin,
+            expected_rp_id=expected_rp_id,
+            require_user_verification=False,
+        )
+
+        # verification should contain credential_id, public_key and sign_count
+        credential_id = verification.credential_id
+        public_key = verification.credential_public_key
+        sign_count = verification.sign_count
+
+        # Store credential
+        store_credential(credential_id, public_key, sign_count)
+
+        return {'status': 'ok'}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f'Passkey registration verification failed: {str(e)}')
+
+
+@app.get('/api/auth/passkey/login/options')
+async def passkey_login_options():
+    # If we have credentials, return allowCredentials and a challenge
+    creds = get_all_credentials()
+    if not creds:
+        return {'allowCredentials': [], 'challenge': None}
+
+    challenge_bytes = secrets.token_bytes(32)
+    challenge = b64encode(challenge_bytes)
+    webauthn_challenges['login'] = challenge
+
+    allow_credentials = []
+    for c in creds:
+        allow_credentials.append({
+            'id': c['credential_id'],
+            'type': 'public-key',
+            'transports': c['transports'].split(',') if c.get('transports') else []
+        })
+
+    options = {
+        'challenge': challenge,
+        'allowCredentials': allow_credentials,
+        'timeout': 60000,
+        'userVerification': 'preferred',
+        'rpId': get_rp_id()
+    }
+
+    return options
+
+
+@app.post('/api/auth/passkey/login/verify')
+async def passkey_login_verify(request: Request, payload: dict = Body(...)):
+    try:
+        expected_challenge = webauthn_challenges.get('login')
+        if not expected_challenge:
+            raise HTTPException(status_code=400, detail='Missing login challenge; request options first')
+
+        from webauthn import verify_authentication_response
+
+        assertion = payload
+        credential_id = assertion.get('id') or assertion.get('rawId')
+        cred = get_credential_by_id(credential_id)
+        if not cred:
+            raise HTTPException(status_code=400, detail='Unknown credential')
+
+        expected_origin = settings.FRONTEND_URL
+        expected_rp_id = get_rp_id()
+
+        verification = verify_authentication_response(
+            credential=assertion,
+            expected_challenge=expected_challenge,
+            expected_rp_id=expected_rp_id,
+            expected_origin=expected_origin,
+            credential_public_key=cred['public_key'],
+            prev_sign_count=cred['sign_count']
+        )
+
+        # Update sign count
+        update_sign_count(credential_id, verification.new_sign_count)
+
+        # Issue JWT token same as password login
+        token = create_access_token(data={'authenticated': True})
+        return {'token': token}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f'Passkey login verification failed: {str(e)}')
 
 @app.get("/api/files/list", response_model=DirectoryListing)
 async def list_files(

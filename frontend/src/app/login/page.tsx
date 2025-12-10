@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/lib/auth';
+import { apiClient } from '@/lib/api';
+import { base64urlToBuffer, strToBuffer, bufferToBase64url } from '@/lib/webauthn';
 
 export default function LoginPage() {
   const [password, setPassword] = useState('');
@@ -18,13 +20,83 @@ export default function LoginPage() {
     }
   }, [isAuthenticated, router]);
 
+  useEffect(() => {
+    // Auto-detect passkey existence in backend
+    const checkPasskey = async () => {
+      try {
+        const res = await apiClient.get('/api/auth/passkey/exists');
+        if (res.data?.exists && window.PublicKeyCredential) {
+          router.push('/passkey');
+        }
+      } catch (e) {
+        // ignore
+      }
+    };
+    checkPasskey();
+  }, [router]);
+
+  const [showRegisterPrompt, setShowRegisterPrompt] = useState(false);
+
+  const handleCreatePasskey = async () => {
+    try {
+      // Get registration options from the server
+      const optionsRes = await apiClient.get('/api/auth/passkey/register/options');
+      const opts = optionsRes.data;
+
+      const publicKey: any = {
+        ...opts,
+        challenge: base64urlToBuffer(opts.challenge),
+        user: {
+          ...opts.user,
+          id: base64urlToBuffer(opts.user.id)
+        }
+      };
+
+      const cred: any = await navigator.credentials.create({ publicKey });
+
+      // Build client response to send to server
+      const clientDataJSON = bufferToBase64url(cred.response.clientDataJSON);
+      const attestationObject = bufferToBase64url((cred as any).response.attestationObject);
+      const rawId = bufferToBase64url(cred.rawId);
+
+      await apiClient.post('/api/auth/passkey/register/verify', {
+        id: cred.id,
+        rawId,
+        type: cred.type,
+        response: {
+          clientDataJSON,
+          attestationObject
+        }
+      });
+
+      setShowRegisterPrompt(false);
+      // Redirect to home after registration
+      router.push('/');
+    } catch (err: any) {
+      console.error('Passkey registration failed', err);
+      alert('Failed to register passkey');
+    }
+  };
+
+  const handleCancelRegister = () => {
+    setShowRegisterPrompt(false);
+    router.push('/');
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setIsLoading(true);
 
     try {
-      await login(password);
+      await login(password, false);
+      setIsLoading(false);
+      // Prompt user to register a passkey
+      if (window.PublicKeyCredential) {
+        setShowRegisterPrompt(true);
+      } else {
+        router.push('/');
+      }
     } catch (err: any) {
       setError(err.message || 'Invalid password');
       setIsLoading(false);
@@ -107,6 +179,19 @@ export default function LoginPage() {
             )}
           </motion.button>
         </motion.form>
+
+        {showRegisterPrompt && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+            <div className="bg-white/5 p-6 rounded-lg glass-card w-full max-w-md">
+              <h3 className="text-white text-lg font-semibold mb-2">Create a Passkey?</h3>
+              <p className="text-white/70 mb-4">Would you like to create a Passkey for this device to enable quick passwordless login next time?</p>
+              <div className="flex items-center justify-end space-x-3">
+                <button onClick={handleCancelRegister} className="glass-button px-4 py-2 text-white/70">Skip</button>
+                <button onClick={handleCreatePasskey} className="glass-button px-4 py-2 text-white">Create Passkey</button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <motion.div
           initial={{ opacity: 0 }}

@@ -11,7 +11,7 @@ import { API_URL, TOKEN_KEY } from './config';
 interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (password: string) => Promise<void>;
+  login: (password: string, redirect?: boolean) => Promise<void>;
   logout: () => void;
 }
 
@@ -67,7 +67,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   };
 
-  const login = async (password: string) => {
+  const login = async (password: string, redirect = true) => {
     try {
       const response = await axios.post(`${API_URL}/api/auth/login`, {
         password,
@@ -76,9 +76,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const { token } = response.data;
       localStorage.setItem(TOKEN_KEY, token);
       setIsAuthenticated(true);
-      
-      // Redirect to home page
-      router.push('/');
+
+      if (redirect) {
+        // Redirect to home page
+        router.push('/');
+      }
     } catch (error: any) {
       throw new Error(error.response?.data?.detail || 'Login failed');
     }
