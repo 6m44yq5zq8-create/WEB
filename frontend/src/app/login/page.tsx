@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/lib/auth';
@@ -14,11 +14,18 @@ export default function LoginPage() {
   const { login, isAuthenticated } = useAuth();
   const router = useRouter();
 
+  const dontAutoRedirectRef = useRef(false);
   useEffect(() => {
-    if (isAuthenticated) {
+    if (isAuthenticated && !dontAutoRedirectRef.current) {
       router.push('/');
     }
   }, [isAuthenticated, router]);
+
+  useEffect(() => {
+    return () => {
+      dontAutoRedirectRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     // Auto-detect passkey existence in backend
@@ -93,19 +100,21 @@ export default function LoginPage() {
     e.preventDefault();
     setError('');
     setIsLoading(true);
+    dontAutoRedirectRef.current = true;
 
     try {
       await login(password, false);
       setIsLoading(false);
-      // Prompt user to register a passkey
+      // If browser supports Passkey, redirect to passkey registration page
       if (window.PublicKeyCredential) {
-        setShowRegisterPrompt(true);
+        router.push('/passkey/register');
       } else {
         router.push('/');
       }
     } catch (err: any) {
       setError(err.message || 'Invalid password');
       setIsLoading(false);
+      dontAutoRedirectRef.current = false;
     }
   };
 
