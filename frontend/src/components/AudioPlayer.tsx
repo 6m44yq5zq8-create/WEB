@@ -4,6 +4,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import type { ChangeEvent } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FileInfo } from '@/types';
 import { API_URL, TOKEN_KEY } from '@/lib/config';
@@ -20,6 +21,7 @@ export default function AudioPlayer({ file, onClose }: AudioPlayerProps) {
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
+  const [bufferedEnd, setBufferedEnd] = useState(0);
 
   // Set up audio source with token authentication
   useEffect(() => {
@@ -50,6 +52,11 @@ export default function AudioPlayer({ file, onClose }: AudioPlayerProps) {
         
         if (!mounted) return;
 
+        setCurrentTime(0);
+        setDuration(0);
+        setBufferedEnd(0);
+        setIsPlaying(false);
+
         // Use the short-lived stream token in the URL
         const audioUrl = `${API_URL}/api/stream/audio?path=${encodeURIComponent(file.path)}&token=${encodeURIComponent(streamToken)}`;
         
@@ -77,13 +84,24 @@ export default function AudioPlayer({ file, onClose }: AudioPlayerProps) {
     // Named handlers so removeEventListener works correctly
     const updateTime = () => setCurrentTime(audio.currentTime);
     const updateDuration = () => setDuration(isFinite(audio.duration) ? audio.duration : 0);
+    const updateBuffer = () => {
+      if (audio.buffered.length > 0) {
+        const bufferedTime = audio.buffered.end(audio.buffered.length - 1);
+        setBufferedEnd(bufferedTime);
+      } else {
+        setBufferedEnd(0);
+      }
+    };
     const handleEnded = () => setIsPlaying(false);
     const handleRateChange = () => setPlaybackRate(audio.playbackRate);
 
     audio.addEventListener('timeupdate', updateTime);
     audio.addEventListener('loadedmetadata', updateDuration);
+    audio.addEventListener('progress', updateBuffer);
     audio.addEventListener('ended', handleEnded);
     audio.addEventListener('ratechange', handleRateChange);
+
+    updateBuffer();
 
     // keyboard shortcut: space to toggle play/pause
     const handleKey = (e: KeyboardEvent) => {
@@ -95,10 +113,11 @@ export default function AudioPlayer({ file, onClose }: AudioPlayerProps) {
     window.addEventListener('keydown', handleKey as any);
 
     return () => {
-      audio.removeEventListener('timeupdate', updateTime);
-      audio.removeEventListener('loadedmetadata', updateDuration);
-      audio.removeEventListener('ended', handleEnded);
-      audio.removeEventListener('ratechange', handleRateChange);
+  audio.removeEventListener('timeupdate', updateTime);
+  audio.removeEventListener('loadedmetadata', updateDuration);
+  audio.removeEventListener('progress', updateBuffer);
+  audio.removeEventListener('ended', handleEnded);
+  audio.removeEventListener('ratechange', handleRateChange);
       window.removeEventListener('keydown', handleKey as any);
     };
   }, []);
@@ -115,7 +134,7 @@ export default function AudioPlayer({ file, onClose }: AudioPlayerProps) {
     setIsPlaying(!isPlaying);
   };
 
-  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleSeek = (e: ChangeEvent<HTMLInputElement>) => {
     const audio = audioRef.current;
     if (!audio) return;
 
@@ -124,7 +143,7 @@ export default function AudioPlayer({ file, onClose }: AudioPlayerProps) {
     setCurrentTime(newTime);
   };
 
-  const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleVolumeChange = (e: ChangeEvent<HTMLInputElement>) => {
     const audio = audioRef.current;
     if (!audio) return;
 
@@ -177,6 +196,8 @@ export default function AudioPlayer({ file, onClose }: AudioPlayerProps) {
     audio.loop = isLoop;
   }, [isLoop]);
 
+  const bufferPercent = duration ? Math.min(100, (bufferedEnd / duration) * 100) : 0;
+
   const formatTime = (time: number) => {
     if (!isFinite(time) || time <= 0) return '0:00';
     const minutes = Math.floor(time / 60);
@@ -223,15 +244,19 @@ export default function AudioPlayer({ file, onClose }: AudioPlayerProps) {
 
           {/* Progress bar */}
           <div className="mb-4">
-            <input
-              aria-label="Seek"
-              type="range"
-              min="0"
-              max={duration || 0}
-              value={currentTime}
-              onChange={handleSeek}
-              className="w-full h-2 bg-white/10 rounded-lg appearance-none cursor-pointer slider"
-            />
+            <div className="relative h-2">
+              <div className="absolute inset-0 rounded-full bg-white/10" />
+              <div className="absolute inset-y-0 left-0 rounded-full bg-white/30 transition-[width] duration-200 buffered-bar" />
+              <input
+                aria-label="Seek"
+                type="range"
+                min="0"
+                max={duration || 0}
+                value={Math.min(currentTime, duration || 0)}
+                onChange={handleSeek}
+                className="absolute inset-0 w-full h-full appearance-none bg-transparent cursor-pointer slider"
+              />
+            </div>
           </div>
 
           {/* Controls */}
@@ -333,6 +358,24 @@ export default function AudioPlayer({ file, onClose }: AudioPlayerProps) {
           cursor: pointer;
           border: none;
           box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .slider::-webkit-slider-runnable-track {
+          height: 100%;
+          background: transparent;
+        }
+
+        .slider::-moz-range-track {
+          height: 100%;
+          background: transparent;
+        }
+
+        .slider:focus {
+          outline: none;
+        }
+
+        .buffered-bar {
+          width: ${bufferPercent}%;
         }
       `}</style>
     </AnimatePresence>
