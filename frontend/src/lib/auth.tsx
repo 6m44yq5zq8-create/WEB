@@ -28,10 +28,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   // Check if user is authenticated on mount
   useEffect(() => {
-    const token = localStorage.getItem(TOKEN_KEY);
-    if (token) {
-      // Verify token is still valid
-      verifyToken(token);
+    if (typeof window !== 'undefined') {
+      const token = localStorage.getItem(TOKEN_KEY);
+      if (token) {
+        // Verify token is still valid
+        verifyToken(token);
+      } else {
+        setIsLoading(false);
+      }
     } else {
       setIsLoading(false);
     }
@@ -69,8 +73,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
         password,
       });
 
-      const { access_token } = response.data;
-      localStorage.setItem(TOKEN_KEY, access_token);
+      const { token } = response.data;
+      localStorage.setItem(TOKEN_KEY, token);
       setIsAuthenticated(true);
       
       // Redirect to home page
