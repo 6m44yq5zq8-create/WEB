@@ -51,6 +51,12 @@ export default function LoginPage() {
           id: base64urlToBuffer(opts.user.id)
         }
       };
+      if (opts.excludeCredentials && Array.isArray(opts.excludeCredentials)) {
+        publicKey.excludeCredentials = opts.excludeCredentials.map((c: any) => ({
+          ...c,
+          id: base64urlToBuffer(c.id),
+        }));
+      }
 
       const cred: any = await navigator.credentials.create({ publicKey });
 
