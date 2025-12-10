@@ -12,6 +12,8 @@ import FileItem from '@/components/FileItem';
 import SkeletonLoader from '@/components/SkeletonLoader';
 import AudioPlayer from '@/components/AudioPlayer';
 import VideoPlayer from '@/components/VideoPlayer';
+import { apiClient } from '@/lib/api';
+import { base64urlToBuffer, bufferToBase64url } from '@/lib/webauthn';
 
 export default function HomePage() {
   const { isAuthenticated, isLoading: authLoading, logout } = useAuth();
@@ -143,7 +145,8 @@ export default function HomePage() {
             </div>
           </div>
           
-          <motion.button
+          <motion.div className="flex items-center space-x-3">
+            <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={logout}
@@ -151,6 +154,54 @@ export default function HomePage() {
           >
             Logout
           </motion.button>
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={async () => {
+                try {
+                  // check secure context
+                  if (!window.PublicKeyCredential || !(window.isSecureContext || window.location.hostname === 'localhost')) {
+                    alert('Passkey registration requires a secure context (https) or localhost.');
+                    return;
+                  }
+                  const res = await apiClient.get('/api/auth/passkey/register/options');
+                  const opts = res.data;
+                  if (!opts || !opts.challenge) {
+                    alert('Cannot create Passkey: registration not allowed or server returned no options.');
+                    return;
+                  }
+                  const publicKey: any = {
+                    ...opts,
+                    challenge: base64urlToBuffer(opts.challenge),
+                    user: {
+                      ...opts.user,
+                      id: base64urlToBuffer(opts.user.id)
+                    }
+                  };
+                  if (opts.excludeCredentials && Array.isArray(opts.excludeCredentials)) {
+                    publicKey.excludeCredentials = opts.excludeCredentials.map((c: any) => ({ ...c, id: base64urlToBuffer(c.id) }));
+                  }
+                  const cred: any = await navigator.credentials.create({ publicKey });
+                  const clientDataJSON = bufferToBase64url(cred.response.clientDataJSON);
+                  const attestationObject = bufferToBase64url((cred as any).response.attestationObject);
+                  const rawId = bufferToBase64url(cred.rawId);
+                  await apiClient.post('/api/auth/passkey/register/verify', {
+                    id: cred.id,
+                    rawId,
+                    type: cred.type,
+                    response: { clientDataJSON, attestationObject }
+                  });
+                  alert('Passkey created successfully.');
+                } catch (err: any) {
+                  console.error('Create passkey failed:', err);
+                  alert('Passkey creation failed: ' + (err?.response?.data?.detail || err?.message || 'unknown'));
+                }
+              }}
+              className="glass-button text-white text-sm"
+            >
+              Create Passkey
+            </motion.button>
+          </motion.div>
         </div>
 
         {/* Breadcrumb */}
