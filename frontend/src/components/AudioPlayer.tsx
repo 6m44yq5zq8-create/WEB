@@ -331,7 +331,7 @@ export default function AudioPlayer({ file, onClose }: AudioPlayerProps) {
               <div className="relative w-24 h-6">
                 <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-2 rounded-full bg-white/10" />
                 <div
-                  className="absolute left-0 top-1/2 -translate-y-1/2 h-2 rounded-full bg-white/30 transition-[width] duration-200 volume-filled"
+                  className="absolute left-0 top-1/2 -translate-y-1/2 h-2 rounded-full bg-white/70 transition-[width] duration-200 volume-filled"
                 />
                 <input
                   aria-label="Volume"
