@@ -60,6 +60,21 @@ A high-performance, beautiful personal cloud storage system with **liquid glass 
 - Framer Motion for animations
 - Axios for API communication
 
+## 🔐 Security
+
+**Version 1.0.1 - All Security Vulnerabilities Fixed ✅**
+
+This project takes security seriously:
+- ✅ All dependencies updated to patched versions (see [SECURITY.md](SECURITY.md))
+- ✅ JWT token-based authentication
+- ✅ Rate limiting (5 attempts/min) to prevent brute force
+- ✅ Path traversal attack prevention
+- ✅ CORS configuration
+- ✅ Secure password handling with bcrypt
+- ✅ Input validation and sanitization
+
+For security updates and advisories, see [SECURITY.md](SECURITY.md).
+
 ## 📋 Prerequisites
 
 - **Python 3.9+** (for backend)

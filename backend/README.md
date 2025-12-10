@@ -13,6 +13,8 @@ High-performance FastAPI backend for personal cloud storage with media streaming
 
 ## Installation
 
+**⚠️ Security Update:** Version 1.0.1 includes important security patches. All dependencies have been updated to secure versions.
+
 1. Create a virtual environment:
 ```bash
 python -m venv venv
