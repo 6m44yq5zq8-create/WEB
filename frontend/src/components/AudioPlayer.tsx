@@ -74,15 +74,16 @@ export default function AudioPlayer({ file, onClose }: AudioPlayerProps) {
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-
+    // Named handlers so removeEventListener works correctly
     const updateTime = () => setCurrentTime(audio.currentTime);
-    const updateDuration = () => setDuration(audio.duration);
+    const updateDuration = () => setDuration(isFinite(audio.duration) ? audio.duration : 0);
     const handleEnded = () => setIsPlaying(false);
+    const handleRateChange = () => setPlaybackRate(audio.playbackRate);
 
     audio.addEventListener('timeupdate', updateTime);
     audio.addEventListener('loadedmetadata', updateDuration);
     audio.addEventListener('ended', handleEnded);
-    audio.addEventListener('ratechange', () => setPlaybackRate(audio.playbackRate));
+    audio.addEventListener('ratechange', handleRateChange);
 
     // keyboard shortcut: space to toggle play/pause
     const handleKey = (e: KeyboardEvent) => {
@@ -97,7 +98,7 @@ export default function AudioPlayer({ file, onClose }: AudioPlayerProps) {
       audio.removeEventListener('timeupdate', updateTime);
       audio.removeEventListener('loadedmetadata', updateDuration);
       audio.removeEventListener('ended', handleEnded);
-      audio.removeEventListener('ratechange', () => setPlaybackRate(audio.playbackRate));
+      audio.removeEventListener('ratechange', handleRateChange);
       window.removeEventListener('keydown', handleKey as any);
     };
   }, []);
@@ -148,10 +149,12 @@ export default function AudioPlayer({ file, onClose }: AudioPlayerProps) {
 
   const changePlaybackRate = () => {
     const rates = [0.5, 0.75, 1, 1.25, 1.5, 2];
-    const currentIndex = rates.indexOf(playbackRate);
-    const nextRate = rates[(currentIndex + 1) % rates.length];
-    setPlaybackRate(nextRate);
-    if (audioRef.current) audioRef.current.playbackRate = nextRate;
+    setPlaybackRate((prev) => {
+      const currentIndex = rates.indexOf(prev);
+      const nextRate = rates[(currentIndex + 1) % rates.length] ?? rates[0];
+      if (audioRef.current) audioRef.current.playbackRate = nextRate;
+      return nextRate;
+    });
   };
 
   const toggleLoop = () => {
@@ -161,7 +164,21 @@ export default function AudioPlayer({ file, onClose }: AudioPlayerProps) {
     setIsLoop(audio.loop);
   };
 
+  // Keep audio element in sync when playbackRate or isLoop state changes elsewhere
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.playbackRate = playbackRate;
+  }, [playbackRate]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.loop = isLoop;
+  }, [isLoop]);
+
   const formatTime = (time: number) => {
+    if (!isFinite(time) || time <= 0) return '0:00';
     const minutes = Math.floor(time / 60);
     const seconds = Math.floor(time % 60);
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;

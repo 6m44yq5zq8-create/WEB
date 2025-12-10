@@ -150,9 +150,16 @@ def safe_path_join(base: Path, user_path: str) -> Path:
     Raises:
         HTTPException: If path traversal is detected
     """
-    # Remove leading slashes and resolve the path
-    user_path = user_path.lstrip('/')
-    full_path = (base / user_path).resolve()
+    # Normalize separators: accept both backslash and forward slash from clients
+    # Remove leading slashes and split into path components to avoid accidental
+    # path injection via .. or malformed separators.
+    import re
+    user_path = user_path.lstrip('/\\')
+    if user_path == "":
+        full_path = base.resolve()
+    else:
+        parts = [p for p in re.split(r'[\\/]+', user_path) if p and p != '.' ]
+        full_path = base.joinpath(*parts).resolve()
     
     # Ensure the resolved path is within the base directory
     try:
@@ -246,7 +253,7 @@ async def list_files(
                 
                 file_info = FileInfo(
                     name=item.name,
-                    path=str(item.relative_to(settings.ROOT_DIRECTORY)),
+                    path=item.relative_to(settings.ROOT_DIRECTORY).as_posix(),
                     is_directory=item.is_dir(),
                     size=stat.st_size if item.is_file() else None,
                     modified_time=datetime.fromtimestamp(stat.st_mtime).isoformat(),
@@ -314,13 +321,14 @@ async def download_file(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error downloading file: {str(e)}")
 
-@app.post("/api/stream/token")
+@app.api_route("/api/stream/token", methods=["GET", "POST"])
 async def create_stream_token(
     path: str = Query(..., description="File path to create a short-lived stream token"),
     payload: dict = Depends(verify_jwt_token)
 ):
     """
     Create a short-lived stream token for the requested `path`.
+    Accepts GET and POST to be tolerant of different client implementations.
     Requires a valid user JWT (checked by `verify_jwt_token`). Returns a
     JWT with a small expiration and claims {stream: True, path: <path>}.
     """
