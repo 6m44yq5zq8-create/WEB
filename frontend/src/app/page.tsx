@@ -12,7 +12,6 @@ import FileItem from '@/components/FileItem';
 import SkeletonLoader from '@/components/SkeletonLoader';
 import AudioPlayer from '@/components/AudioPlayer';
 import VideoPlayer from '@/components/VideoPlayer';
-import { apiClient } from '@/lib/api';
 import { base64urlToBuffer, bufferToBase64url } from '@/lib/webauthn';
 
 export default function HomePage() {
