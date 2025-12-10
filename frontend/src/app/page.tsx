@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/lib/auth';
@@ -27,6 +27,9 @@ export default function HomePage() {
   
   const [audioFile, setAudioFile] = useState<FileInfo | null>(null);
   const [videoFile, setVideoFile] = useState<FileInfo | null>(null);
+  const [showNewFolder, setShowNewFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -156,6 +159,48 @@ export default function HomePage() {
             <motion.button
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
+              onClick={() => setShowNewFolder(true)}
+              className="glass-button text-white text-sm"
+            >
+              New Folder
+            </motion.button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="hidden"
+              onChange={async (e) => {
+                const f = e.currentTarget.files?.[0];
+                if (!f) return;
+                // basic size check: 100MB
+                if (f.size > 100 * 1024 * 1024) {
+                  alert('File too large (max 100MB).');
+                  return;
+                }
+                const formData = new FormData();
+                formData.append('file', f);
+                try {
+                  await apiClient.post(`/api/files/upload?path=${encodeURIComponent(currentPath)}`, formData, {
+                    headers: { 'Content-Type': 'multipart/form-data' }
+                  });
+                  await loadFiles();
+                  alert('File uploaded');
+                } catch (err: any) {
+                  console.error('Upload failed', err);
+                  alert('Upload failed: ' + (err?.response?.data?.detail || err?.message || 'unknown'));
+                }
+              }}
+            />
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => fileInputRef.current?.click()}
+              className="glass-button text-white text-sm"
+            >
+              Upload
+            </motion.button>
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
               onClick={async () => {
                 try {
                   // check secure context
@@ -241,6 +286,42 @@ export default function HomePage() {
           </div>
         </div>
       </motion.div>
+
+      {showNewFolder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="glass-card p-6 w-full max-w-md">
+            <h3 className="text-white text-lg font-semibold mb-2">Create New Folder</h3>
+            <input
+              type="text"
+              value={newFolderName}
+              onChange={(e) => setNewFolderName(e.target.value)}
+              className="w-full px-4 py-2 rounded bg-white/5 text-white mb-4"
+              placeholder="Folder name"
+            />
+            <div className="flex justify-end space-x-2">
+              <button onClick={() => setShowNewFolder(false)} className="glass-button text-white/70">Cancel</button>
+              <button
+                onClick={async () => {
+                  const name = newFolderName.trim();
+                  if (!name) { alert('Please enter a folder name'); return; }
+                  try {
+                    await apiClient.post('/api/files/create-folder', { name }, { params: { parent: currentPath } });
+                    setShowNewFolder(false);
+                    setNewFolderName('');
+                    await loadFiles();
+                  } catch (err: any) {
+                    console.error('Create folder failed', err);
+                    alert('Create folder failed: ' + (err?.response?.data?.detail || err?.message || 'unknown'));
+                  }
+                }}
+                className="glass-button text-white"
+              >
+                Create
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* File list */}
       <motion.div
