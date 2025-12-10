@@ -256,6 +256,12 @@ async def passkey_register_options(payload: dict = Depends(verify_jwt_token)):
     }
     user_handle = b64encode(b'site_user')
 
+    # Add excludeCredentials from existing creds to prevent re-registration on same device
+    existing_creds = get_all_credentials()
+    exclude_credentials = []
+    for c in existing_creds:
+        exclude_credentials.append({'type': 'public-key', 'id': c['credential_id']})
+
     options = {
         'challenge': challenge,
         'rp': rp,
@@ -272,6 +278,8 @@ async def passkey_register_options(payload: dict = Depends(verify_jwt_token)):
         'timeout': 60000,
         'attestation': 'direct'
     }
+    if exclude_credentials:
+        options['excludeCredentials'] = exclude_credentials
 
     return options
 
@@ -344,6 +352,22 @@ async def passkey_login_options():
     }
 
     return options
+
+
+@app.get('/api/auth/passkey/list')
+async def passkey_list(jwt_payload: dict = Depends(verify_jwt_token)):
+    creds = get_all_credentials()
+    # Return minimal public info to client (no public_key)
+    return [{'credential_id': c['credential_id'], 'transports': c['transports'], 'created_at': c['created_at']} for c in creds]
+
+
+@app.delete('/api/auth/passkey/{credential_id}')
+async def passkey_delete(credential_id: str, jwt_payload: dict = Depends(verify_jwt_token)):
+    cred = get_credential_by_id(credential_id)
+    if not cred:
+        raise HTTPException(status_code=404, detail='Credential not found')
+    delete_credential(credential_id)
+    return {'status': 'deleted'}
 
 
 @app.post('/api/auth/passkey/login/verify')

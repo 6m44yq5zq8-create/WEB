@@ -87,5 +87,13 @@ def update_sign_count(credential_id: str, sign_count: int):
     conn.close()
 
 
+def delete_credential(credential_id: str):
+    conn = _get_conn()
+    cur = conn.cursor()
+    cur.execute('DELETE FROM credentials WHERE credential_id = ?', (credential_id,))
+    conn.commit()
+    conn.close()
+
+
 # initialize DB when imported
 init_db()
