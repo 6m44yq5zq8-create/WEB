@@ -197,6 +197,7 @@ export default function AudioPlayer({ file, onClose }: AudioPlayerProps) {
   }, [isLoop]);
 
   const bufferPercent = duration ? Math.min(100, (bufferedEnd / duration) * 100) : 0;
+  const volumePercent = Math.round((isMuted ? 0 : volume) * 100);
 
   const formatTime = (time: number) => {
     if (!isFinite(time) || time <= 0) return '0:00';
@@ -244,9 +245,10 @@ export default function AudioPlayer({ file, onClose }: AudioPlayerProps) {
 
           {/* Progress bar */}
           <div className="mb-4">
-            <div className="relative h-2">
-              <div className="absolute inset-0 rounded-full bg-white/10" />
-              <div className="absolute inset-y-0 left-0 rounded-full bg-white/30 transition-[width] duration-200 buffered-bar" />
+            <div className="relative h-6">
+              {/* Visual track centered inside a taller container so thumb aligns */}
+              <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-2 rounded-full bg-white/10" />
+              <div className="absolute left-0 top-1/2 -translate-y-1/2 h-2 rounded-full bg-white/30 transition-[width] duration-200 buffered-bar" />
               <input
                 aria-label="Seek"
                 type="range"
@@ -254,7 +256,7 @@ export default function AudioPlayer({ file, onClose }: AudioPlayerProps) {
                 max={duration || 0}
                 value={Math.min(currentTime, duration || 0)}
                 onChange={handleSeek}
-                className="absolute inset-0 w-full h-full appearance-none bg-transparent cursor-pointer slider"
+                className="absolute inset-0 w-full appearance-none bg-transparent cursor-pointer slider"
               />
             </div>
           </div>
@@ -324,16 +326,22 @@ export default function AudioPlayer({ file, onClose }: AudioPlayerProps) {
                   </svg>
                 )}
               </motion.button>
-              <input
-                aria-label="Volume"
-                type="range"
-                min="0"
-                max="1"
-                step="0.01"
-                value={isMuted ? 0 : volume}
-                onChange={handleVolumeChange}
-                className="w-24 h-2 bg-white/10 rounded-lg appearance-none cursor-pointer slider"
-              />
+              <div className="relative w-24 h-6">
+                <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-2 rounded-full bg-white/10" />
+                <div
+                  className="absolute left-0 top-1/2 -translate-y-1/2 h-2 rounded-full bg-white/30 transition-[width] duration-200 volume-filled"
+                />
+                <input
+                  aria-label="Volume"
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  value={isMuted ? 0 : volume}
+                  onChange={handleVolumeChange}
+                  className="absolute inset-0 w-full appearance-none bg-transparent cursor-pointer slider"
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -360,13 +368,17 @@ export default function AudioPlayer({ file, onClose }: AudioPlayerProps) {
           box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
         }
 
-        .slider::-webkit-slider-runnable-track {
+        .slider {
           height: 100%;
+        }
+
+        .slider::-webkit-slider-runnable-track {
+          height: 2px;
           background: transparent;
         }
 
         .slider::-moz-range-track {
-          height: 100%;
+          height: 2px;
           background: transparent;
         }
 
@@ -376,6 +388,32 @@ export default function AudioPlayer({ file, onClose }: AudioPlayerProps) {
 
         .buffered-bar {
           width: ${bufferPercent}%;
+        }
+
+        .volume-filled {
+          width: ${volumePercent}%;
+        }
+
+        .slider::-webkit-slider-thumb {
+          -webkit-appearance: none;
+          appearance: none;
+          width: 16px;
+          height: 16px;
+          border-radius: 50%;
+          background: white;
+          cursor: pointer;
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+          margin-top: -7px; /* centers thumb over a 2px track */
+        }
+
+        .slider::-moz-range-thumb {
+          width: 16px;
+          height: 16px;
+          border-radius: 50%;
+          background: white;
+          cursor: pointer;
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+          transform: translateY(0); /* Firefox centers thumb automatically */
         }
       `}</style>
     </AnimatePresence>
