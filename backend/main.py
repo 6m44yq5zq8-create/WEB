@@ -9,6 +9,7 @@ from typing import Optional, List
 from datetime import datetime, timedelta
 
 from fastapi import FastAPI, HTTPException, Depends, Header, Query, Request, Body
+from fastapi import UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, FileResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -21,7 +22,7 @@ from config import settings
 import base64
 import secrets
 import json
-from webauthn_store import store_credential, get_all_credentials, get_credential_by_id, update_sign_count
+from webauthn_store import store_credential, get_all_credentials, get_credential_by_id, update_sign_count, delete_credential
 
 # Challenge store for register/login (simple in-memory store for single-user system)
 webauthn_challenges = {
@@ -47,7 +48,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.FRONTEND_URL, "http://49.232.185.68:3000"],
+    allow_origins=[settings.FRONTEND_URL, "http://localhost:8900"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -623,6 +624,93 @@ async def stream_audio(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error streaming audio: {str(e)}")
+
+
+@app.post('/api/files/create-folder')
+@limiter.limit('10/minute')
+async def create_folder(
+    parent: Optional[str] = Query('', description='Parent folder path (relative)'),
+    name: str = Body(..., embed=True, description='New folder name'),
+    payload: dict = Depends(verify_jwt_token)
+):
+    """
+    Create a new folder inside `parent` with name `name`.
+    """
+    try:
+        # Sanitize folder name: avoid path separators
+        if not name or '/' in name or '\\' in name or name in ('..', '.'):
+            raise HTTPException(status_code=400, detail='Invalid folder name')
+
+        dest_path = safe_path_join(settings.ROOT_DIRECTORY, (parent or '').strip('/\\'))
+        new_dir = dest_path.joinpath(name).resolve()
+        # ensure inside root
+        try:
+            new_dir.relative_to(settings.ROOT_DIRECTORY.resolve())
+        except ValueError:
+            raise HTTPException(status_code=403, detail='Invalid folder path')
+
+        if new_dir.exists():
+            raise HTTPException(status_code=409, detail='Folder already exists')
+
+        new_dir.mkdir(parents=False, exist_ok=False)
+        return {'status': 'created', 'path': new_dir.relative_to(settings.ROOT_DIRECTORY).as_posix()}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f'Failed to create folder: {str(e)}')
+
+
+@app.post('/api/files/upload')
+@limiter.limit('20/minute')
+async def upload_file(
+    path: Optional[str] = Query('', description='Parent directory to upload into'),
+    file: UploadFile = File(...),
+    payload: dict = Depends(verify_jwt_token)
+):
+    """
+    Upload a file to server, safe handling and size limiting applied.
+    """
+    try:
+        parent = safe_path_join(settings.ROOT_DIRECTORY, (path or '').strip('/\\'))
+
+        # Sanitize filename
+        filename = os.path.basename(file.filename)
+        if not filename:
+            raise HTTPException(status_code=400, detail='Missing filename')
+        if filename in ('.', '..'):
+            raise HTTPException(status_code=400, detail='Invalid filename')
+
+        # target file path
+        dest = parent.joinpath(filename).resolve()
+        try:
+            dest.relative_to(settings.ROOT_DIRECTORY.resolve())
+        except ValueError:
+            raise HTTPException(status_code=403, detail='Invalid upload path')
+
+        # Prevent overwriting
+        if dest.exists():
+            raise HTTPException(status_code=409, detail='File already exists')
+
+        # Stream to disk and enforce size
+        max_bytes = settings.UPLOAD_MAX_BYTES
+        written = 0
+        with open(dest, 'wb') as out_f:
+            while True:
+                chunk = await file.read(64 * 1024)
+                if not chunk:
+                    break
+                written += len(chunk)
+                if written > max_bytes:
+                    out_f.close()
+                    os.remove(dest)
+                    raise HTTPException(status_code=413, detail='File too large')
+                out_f.write(chunk)
+
+        return {'status': 'uploaded', 'path': dest.relative_to(settings.ROOT_DIRECTORY).as_posix(), 'size': written}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f'File upload failed: {str(e)}')
 
 @app.get("/api/stream/video")
 async def stream_video(

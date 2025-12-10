@@ -25,6 +25,8 @@ class Settings:
     
     # CORS settings
     FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://49.232.185.68:3000")
+    # Upload settings
+    UPLOAD_MAX_BYTES: int = int(os.getenv("UPLOAD_MAX_BYTES", str(100 * 1024 * 1024)))  # default 100MB
     
     # Ensure root directory exists
     def __init__(self):
