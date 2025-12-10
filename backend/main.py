@@ -357,6 +357,10 @@ async def stream_audio(
             payload_token = verify_token(token)
             if not payload_token:
                 raise HTTPException(status_code=401, detail="Invalid or expired token")
+            # If it's a stream token, verify the path matches
+            if payload_token.get('stream'):
+                if payload_token.get('path') != path:
+                    raise HTTPException(status_code=403, detail="Token not valid for this path")
         else:
             # Fallback: require JWT via Authorization header
             if request is None:
@@ -444,6 +448,10 @@ async def stream_video(
             payload_token = verify_token(token)
             if not payload_token:
                 raise HTTPException(status_code=401, detail="Invalid or expired token")
+            # If it's a stream token, verify the path matches
+            if payload_token.get('stream'):
+                if payload_token.get('path') != path:
+                    raise HTTPException(status_code=403, detail="Token not valid for this path")
         else:
             if request is None:
                 raise HTTPException(status_code=401, detail="Missing authentication token")

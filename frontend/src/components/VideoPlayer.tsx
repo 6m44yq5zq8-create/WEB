@@ -25,12 +25,47 @@ export default function VideoPlayer({ file, onClose }: VideoPlayerProps) {
     const video = videoRef.current;
     if (!video) return;
 
-    const token = typeof window !== 'undefined' ? localStorage.getItem('cloud_storage_token') : null;
-    // Include token in URL since video element can't set Authorization headers
-    const videoUrl = `${API_URL}/api/stream/video?path=${encodeURIComponent(file.path)}${token ? `&token=${encodeURIComponent(token)}` : ''}`;
-    
-    video.src = videoUrl;
-    video.load();
+    let mounted = true;
+
+    const setupVideo = async () => {
+      try {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('cloud_storage_token') : null;
+        if (!token) return;
+
+        // Get a short-lived stream token specific to this file
+        const response = await fetch(
+          `${API_URL}/api/stream/token?path=${encodeURIComponent(file.path)}`,
+          {
+            headers: { Authorization: `Bearer ${token}` }
+          }
+        );
+
+        if (!response.ok) {
+          console.error('Failed to get stream token');
+          return;
+        }
+
+        const { token: streamToken } = await response.json();
+        
+        if (!mounted) return;
+
+        // Use the short-lived stream token in the URL
+        const videoUrl = `${API_URL}/api/stream/video?path=${encodeURIComponent(file.path)}&token=${encodeURIComponent(streamToken)}`;
+        
+        if (video) {
+          video.src = videoUrl;
+          video.load();
+        }
+      } catch (err) {
+        console.error('Error setting up video:', err);
+      }
+    };
+
+    setupVideo();
+
+    return () => {
+      mounted = false;
+    };
   }, [file.path]);
 
   useEffect(() => {

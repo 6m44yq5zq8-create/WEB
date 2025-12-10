@@ -26,12 +26,47 @@ export default function AudioPlayer({ file, onClose }: AudioPlayerProps) {
     const audio = audioRef.current;
     if (!audio) return;
 
-    const token = typeof window !== 'undefined' ? localStorage.getItem(TOKEN_KEY) : null;
-    // Include token in URL since audio element can't set Authorization headers
-    const audioUrl = `${API_URL}/api/stream/audio?path=${encodeURIComponent(file.path)}${token ? `&token=${encodeURIComponent(token)}` : ''}`;
-    
-    audio.src = audioUrl;
-    audio.load();
+    let mounted = true;
+
+    const setupAudio = async () => {
+      try {
+        const token = typeof window !== 'undefined' ? localStorage.getItem(TOKEN_KEY) : null;
+        if (!token) return;
+
+        // Get a short-lived stream token specific to this file
+        const response = await fetch(
+          `${API_URL}/api/stream/token?path=${encodeURIComponent(file.path)}`,
+          {
+            headers: { Authorization: `Bearer ${token}` }
+          }
+        );
+
+        if (!response.ok) {
+          console.error('Failed to get stream token');
+          return;
+        }
+
+        const { token: streamToken } = await response.json();
+        
+        if (!mounted) return;
+
+        // Use the short-lived stream token in the URL
+        const audioUrl = `${API_URL}/api/stream/audio?path=${encodeURIComponent(file.path)}&token=${encodeURIComponent(streamToken)}`;
+        
+        if (audio) {
+          audio.src = audioUrl;
+          audio.load();
+        }
+      } catch (err) {
+        console.error('Error setting up audio:', err);
+      }
+    };
+
+    setupAudio();
+
+    return () => {
+      mounted = false;
+    };
   }, [file.path]);
   const [playbackRate, setPlaybackRate] = useState(1);
   const [isLoop, setIsLoop] = useState(false);
