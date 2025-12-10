@@ -200,6 +200,8 @@ export default function AudioPlayer({ file, onClose }: AudioPlayerProps) {
   const playedPercent = duration ? Math.min(100, (currentTime / duration) * 100) : 0;
   const volumePercent = Math.round((isMuted ? 0 : volume) * 100);
 
+  const displayName = file.name?.replace(/\.[^.]+$/, '') || file.name;
+
   const formatTime = (time: number) => {
     if (!isFinite(time) || time <= 0) return '0:00';
     const minutes = Math.floor(time / 60);
@@ -225,7 +227,7 @@ export default function AudioPlayer({ file, onClose }: AudioPlayerProps) {
             <div className="flex items-center space-x-4 flex-1 min-w-0">
               <div className="text-4xl">🎵</div>
               <div className="flex-1 min-w-0">
-                <h3 className="text-white font-semibold truncate">{file.name}</h3>
+                <h3 className="text-white font-semibold truncate">{displayName}</h3>
                 <p className="text-white/60 text-sm">
                   {formatTime(currentTime)} / {formatTime(duration)}
                 </p>
