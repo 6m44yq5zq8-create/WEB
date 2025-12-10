@@ -244,7 +244,7 @@ async def passkey_exists():
 
 
 @app.get('/api/auth/passkey/register/options')
-async def passkey_register_options():
+async def passkey_register_options(payload: dict = Depends(verify_jwt_token)):
     # Generate a new challenge
     challenge_bytes = secrets.token_bytes(32)
     challenge = b64encode(challenge_bytes)
@@ -277,7 +277,7 @@ async def passkey_register_options():
 
 
 @app.post('/api/auth/passkey/register/verify')
-async def passkey_register_verify(request: Request, payload: dict = Body(...)):
+async def passkey_register_verify(request: Request, payload: dict = Body(...), jwt_payload: dict = Depends(verify_jwt_token)):
     try:
         # This endpoint verifies the attestation object from the client and stores credential
         # Payload is expected to be the registration response from navigator.credentials.create()
