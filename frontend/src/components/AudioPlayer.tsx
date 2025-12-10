@@ -21,151 +21,67 @@ export default function AudioPlayer({ file, onClose }: AudioPlayerProps) {
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
 
-  const [streaming, setStreaming] = useState(false);
-
-  // Use MediaSource to stream authenticated media via fetch with Authorization header.
+  // Set up audio source with token authentication
   useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
     let mounted = true;
-    let mediaSource: MediaSource | null = null;
-    let sourceBuffer: SourceBuffer | null = null;
-    let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
-    let queue: Uint8Array[] = [];
 
-    const cleanup = () => {
-      if (reader && (reader as any).cancel) (reader as any).cancel();
+    const setupAudio = async () => {
       try {
-        if (sourceBuffer && mediaSource && mediaSource.readyState === 'open') {
-          // try to signal end
-          if (!sourceBuffer.updating) mediaSource.endOfStream();
+        const token = typeof window !== 'undefined' ? localStorage.getItem(TOKEN_KEY) : null;
+        if (!token) return;
+
+        // Get a short-lived stream token specific to this file
+        const response = await fetch(
+          `${API_URL}/api/stream/token?path=${encodeURIComponent(file.path)}`,
+          {
+            headers: { Authorization: `Bearer ${token}` }
+          }
+        );
+
+        if (!response.ok) {
+          console.error('Failed to get stream token');
+          return;
         }
-      } catch {}
-      queue = [];
-      sourceBuffer = null;
-      if (mediaSource) {
-        try { URL.revokeObjectURL((audioRef.current as HTMLAudioElement).src); } catch {}
-      }
-      mediaSource = null;
-    };
 
-    const initMSE = async () => {
-      const token = typeof window !== 'undefined' ? localStorage.getItem(TOKEN_KEY) : null;
-      const url = `${API_URL}/api/stream/audio?path=${encodeURIComponent(file.path)}`;
-
-      try {
-        const resp = await fetch(url, {
-          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-        });
-
+        const { token: streamToken } = await response.json();
+        
         if (!mounted) return;
 
-        if (!resp.ok || !resp.body) {
-          // fallback: download full blob
-          const blob = await resp.blob();
-          const blobUrl = URL.createObjectURL(blob);
-          if (mounted && audioRef.current) audioRef.current.src = blobUrl;
-          return;
+        // Use the short-lived stream token in the URL
+        const audioUrl = `${API_URL}/api/stream/audio?path=${encodeURIComponent(file.path)}&token=${encodeURIComponent(streamToken)}`;
+        
+        if (audio) {
+          audio.src = audioUrl;
+          audio.load();
         }
-
-        const contentType = resp.headers.get('content-type') || 'audio/mpeg';
-
-        if (!('MediaSource' in window)) {
-          // fallback
-          const blob = await resp.blob();
-          const blobUrl = URL.createObjectURL(blob);
-          if (mounted && audioRef.current) audioRef.current.src = blobUrl;
-          return;
-        }
-
-        mediaSource = new MediaSource();
-        if (mounted && audioRef.current) audioRef.current.src = URL.createObjectURL(mediaSource);
-
-        mediaSource.addEventListener('sourceopen', async () => {
-          if (!mediaSource) return;
-          try {
-            // try to create a sourceBuffer for the reported MIME type
-            sourceBuffer = mediaSource.addSourceBuffer(contentType as string);
-          } catch (err) {
-            // If cannot create sourceBuffer for this type, fallback to blob
-            const blob = await resp.blob();
-            const blobUrl = URL.createObjectURL(blob);
-            if (mounted && audioRef.current) audioRef.current.src = blobUrl;
-            return;
-          }
-
-          reader = resp.body!.getReader();
-
-          const appendNext = async (chunk: Uint8Array) => {
-            return new Promise<void>((resolve) => {
-              if (!sourceBuffer) return resolve();
-              const onUpdate = () => {
-                sourceBuffer!.removeEventListener('updateend', onUpdate);
-                resolve();
-              };
-              sourceBuffer.addEventListener('updateend', onUpdate);
-              try {
-                sourceBuffer.appendBuffer(chunk as any);
-              } catch (e) {
-                // append error -> resolve to avoid deadlock
-                resolve();
-              }
-            });
-          };
-
-          // Read loop
-          while (true) {
-            const { value, done } = await reader!.read();
-            if (value && value.length) {
-              // if buffer updating, queue it
-              if (sourceBuffer!.updating) {
-                queue.push(value);
-              } else {
-                await appendNext(value);
-                // flush queue
-                while (queue.length) {
-                  const q = queue.shift()!;
-                  await appendNext(q);
-                }
-              }
-            }
-            if (done) break;
-          }
-
-          try { mediaSource.endOfStream(); } catch {}
-        });
-
-        setStreaming(true);
       } catch (err) {
-        console.error('MSE fetch error', err);
+        console.error('Error setting up audio:', err);
       }
     };
 
-    initMSE();
-    return () => { mounted = false; cleanup(); };
+    setupAudio();
+
+    return () => {
+      mounted = false;
+    };
   }, [file.path]);
-  const [bufferedPercent, setBufferedPercent] = useState(0);
   const [playbackRate, setPlaybackRate] = useState(1);
   const [isLoop, setIsLoop] = useState(false);
 
   useEffect(() => {
-  const audio = audioRef.current;
-  if (!audio) return;
+    const audio = audioRef.current;
+    if (!audio) return;
 
     const updateTime = () => setCurrentTime(audio.currentTime);
     const updateDuration = () => setDuration(audio.duration);
     const handleEnded = () => setIsPlaying(false);
-    const updateBuffered = () => {
-      try {
-        if (audio.buffered.length > 0 && audio.duration > 0) {
-          const end = audio.buffered.end(audio.buffered.length - 1);
-          setBufferedPercent(Math.min(100, Math.round((end / audio.duration) * 100)));
-        }
-      } catch {}
-    };
 
-  audio.addEventListener('timeupdate', updateTime);
+    audio.addEventListener('timeupdate', updateTime);
     audio.addEventListener('loadedmetadata', updateDuration);
     audio.addEventListener('ended', handleEnded);
-    audio.addEventListener('progress', updateBuffered);
     audio.addEventListener('ratechange', () => setPlaybackRate(audio.playbackRate));
 
     // keyboard shortcut: space to toggle play/pause
@@ -181,7 +97,6 @@ export default function AudioPlayer({ file, onClose }: AudioPlayerProps) {
       audio.removeEventListener('timeupdate', updateTime);
       audio.removeEventListener('loadedmetadata', updateDuration);
       audio.removeEventListener('ended', handleEnded);
-      audio.removeEventListener('progress', updateBuffered);
       audio.removeEventListener('ratechange', () => setPlaybackRate(audio.playbackRate));
       window.removeEventListener('keydown', handleKey as any);
     };
@@ -246,28 +161,6 @@ export default function AudioPlayer({ file, onClose }: AudioPlayerProps) {
     setIsLoop(audio.loop);
   };
 
-  const handleDownload = async () => {
-    try {
-      const token = localStorage.getItem(TOKEN_KEY);
-      const downloadUrl = `${API_URL}/api/files/download?path=${encodeURIComponent(file.path)}`;
-      const resp = await fetch(downloadUrl, {
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-      });
-      if (!resp.ok) throw new Error('Download failed');
-      const blob = await resp.blob();
-      const blobUrl = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = blobUrl;
-      a.download = file.name;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(blobUrl);
-    } catch (err) {
-      console.error('Download failed', err);
-    }
-  };
-
   const formatTime = (time: number) => {
     const minutes = Math.floor(time / 60);
     const seconds = Math.floor(time % 60);
@@ -326,7 +219,7 @@ export default function AudioPlayer({ file, onClose }: AudioPlayerProps) {
 
           {/* Controls */}
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-3">
               {/* Play/Pause button */}
               <motion.button
                 whileHover={{ scale: 1.1 }}
@@ -344,12 +237,13 @@ export default function AudioPlayer({ file, onClose }: AudioPlayerProps) {
                   </svg>
                 )}
               </motion.button>
+
               {/* Playback rate */}
               <motion.button
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 onClick={changePlaybackRate}
-                className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm transition-all"
+                className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm font-medium transition-all min-w-[48px]"
                 title={`Playback rate: ${playbackRate}x`}
               >
                 {playbackRate}x
@@ -360,21 +254,12 @@ export default function AudioPlayer({ file, onClose }: AudioPlayerProps) {
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 onClick={toggleLoop}
-                className={`p-2 rounded-lg ${isLoop ? 'bg-white/30' : 'bg-white/10'} text-white transition-all`}
+                className={`p-2 rounded-lg ${isLoop ? 'bg-white/30' : 'bg-white/10'} hover:bg-white/20 text-white transition-all`}
                 title="Toggle loop"
               >
-                {isLoop ? '🔁' : '↺'}
-              </motion.button>
-
-              {/* Download */}
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={handleDownload}
-                className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white/70 hover:text-white transition-all"
-                title="Download"
-              >
-                ⬇️
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
               </motion.button>
             </div>
 
@@ -409,8 +294,6 @@ export default function AudioPlayer({ file, onClose }: AudioPlayerProps) {
               />
             </div>
           </div>
-          {/* Buffered indicator */}
-          <div className="mt-2 text-white/60 text-sm">Buffered: {bufferedPercent}%</div>
         </div>
       </motion.div>
 
