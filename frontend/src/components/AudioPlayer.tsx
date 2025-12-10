@@ -21,24 +21,169 @@ export default function AudioPlayer({ file, onClose }: AudioPlayerProps) {
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
 
-  const streamUrl = `${API_URL}/api/stream/audio?path=${encodeURIComponent(file.path)}`;
+  const [streaming, setStreaming] = useState(false);
+
+  // Use MediaSource to stream authenticated media via fetch with Authorization header.
+  useEffect(() => {
+    let mounted = true;
+    let mediaSource: MediaSource | null = null;
+    let sourceBuffer: SourceBuffer | null = null;
+    let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+    let queue: Uint8Array[] = [];
+
+    const cleanup = () => {
+      if (reader && (reader as any).cancel) (reader as any).cancel();
+      try {
+        if (sourceBuffer && mediaSource && mediaSource.readyState === 'open') {
+          // try to signal end
+          if (!sourceBuffer.updating) mediaSource.endOfStream();
+        }
+      } catch {}
+      queue = [];
+      sourceBuffer = null;
+      if (mediaSource) {
+        try { URL.revokeObjectURL((audioRef.current as HTMLAudioElement).src); } catch {}
+      }
+      mediaSource = null;
+    };
+
+    const initMSE = async () => {
+      const token = typeof window !== 'undefined' ? localStorage.getItem(TOKEN_KEY) : null;
+      const url = `${API_URL}/api/stream/audio?path=${encodeURIComponent(file.path)}`;
+
+      try {
+        const resp = await fetch(url, {
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        });
+
+        if (!mounted) return;
+
+        if (!resp.ok || !resp.body) {
+          // fallback: download full blob
+          const blob = await resp.blob();
+          const blobUrl = URL.createObjectURL(blob);
+          if (mounted && audioRef.current) audioRef.current.src = blobUrl;
+          return;
+        }
+
+        const contentType = resp.headers.get('content-type') || 'audio/mpeg';
+
+        if (!('MediaSource' in window)) {
+          // fallback
+          const blob = await resp.blob();
+          const blobUrl = URL.createObjectURL(blob);
+          if (mounted && audioRef.current) audioRef.current.src = blobUrl;
+          return;
+        }
+
+        mediaSource = new MediaSource();
+        if (mounted && audioRef.current) audioRef.current.src = URL.createObjectURL(mediaSource);
+
+        mediaSource.addEventListener('sourceopen', async () => {
+          if (!mediaSource) return;
+          try {
+            // try to create a sourceBuffer for the reported MIME type
+            sourceBuffer = mediaSource.addSourceBuffer(contentType as string);
+          } catch (err) {
+            // If cannot create sourceBuffer for this type, fallback to blob
+            const blob = await resp.blob();
+            const blobUrl = URL.createObjectURL(blob);
+            if (mounted && audioRef.current) audioRef.current.src = blobUrl;
+            return;
+          }
+
+          reader = resp.body!.getReader();
+
+          const appendNext = async (chunk: Uint8Array) => {
+            return new Promise<void>((resolve) => {
+              if (!sourceBuffer) return resolve();
+              const onUpdate = () => {
+                sourceBuffer!.removeEventListener('updateend', onUpdate);
+                resolve();
+              };
+              sourceBuffer.addEventListener('updateend', onUpdate);
+              try {
+                sourceBuffer.appendBuffer(chunk as any);
+              } catch (e) {
+                // append error -> resolve to avoid deadlock
+                resolve();
+              }
+            });
+          };
+
+          // Read loop
+          while (true) {
+            const { value, done } = await reader!.read();
+            if (value && value.length) {
+              // if buffer updating, queue it
+              if (sourceBuffer!.updating) {
+                queue.push(value);
+              } else {
+                await appendNext(value);
+                // flush queue
+                while (queue.length) {
+                  const q = queue.shift()!;
+                  await appendNext(q);
+                }
+              }
+            }
+            if (done) break;
+          }
+
+          try { mediaSource.endOfStream(); } catch {}
+        });
+
+        setStreaming(true);
+      } catch (err) {
+        console.error('MSE fetch error', err);
+      }
+    };
+
+    initMSE();
+    return () => { mounted = false; cleanup(); };
+  }, [file.path]);
+  const [bufferedPercent, setBufferedPercent] = useState(0);
+  const [playbackRate, setPlaybackRate] = useState(1);
+  const [isLoop, setIsLoop] = useState(false);
 
   useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
+  const audio = audioRef.current;
+  if (!audio) return;
 
     const updateTime = () => setCurrentTime(audio.currentTime);
     const updateDuration = () => setDuration(audio.duration);
     const handleEnded = () => setIsPlaying(false);
+    const updateBuffered = () => {
+      try {
+        if (audio.buffered.length > 0 && audio.duration > 0) {
+          const end = audio.buffered.end(audio.buffered.length - 1);
+          setBufferedPercent(Math.min(100, Math.round((end / audio.duration) * 100)));
+        }
+      } catch {}
+    };
 
-    audio.addEventListener('timeupdate', updateTime);
+  audio.addEventListener('timeupdate', updateTime);
     audio.addEventListener('loadedmetadata', updateDuration);
     audio.addEventListener('ended', handleEnded);
+    audio.addEventListener('progress', updateBuffered);
+    audio.addEventListener('ratechange', () => setPlaybackRate(audio.playbackRate));
+
+    // keyboard shortcut: space to toggle play/pause
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.code === 'Space') {
+        e.preventDefault();
+        togglePlay();
+      }
+    };
+    window.addEventListener('keydown', handleKey as any);
 
     return () => {
       audio.removeEventListener('timeupdate', updateTime);
       audio.removeEventListener('loadedmetadata', updateDuration);
       audio.removeEventListener('ended', handleEnded);
+      audio.removeEventListener('progress', updateBuffered);
+      audio.removeEventListener('ratechange', () => setPlaybackRate(audio.playbackRate));
+      window.removeEventListener('keydown', handleKey as any);
     };
   }, []);
 
@@ -86,6 +231,43 @@ export default function AudioPlayer({ file, onClose }: AudioPlayerProps) {
     }
   };
 
+  const changePlaybackRate = () => {
+    const rates = [0.5, 0.75, 1, 1.25, 1.5, 2];
+    const currentIndex = rates.indexOf(playbackRate);
+    const nextRate = rates[(currentIndex + 1) % rates.length];
+    setPlaybackRate(nextRate);
+    if (audioRef.current) audioRef.current.playbackRate = nextRate;
+  };
+
+  const toggleLoop = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.loop = !audio.loop;
+    setIsLoop(audio.loop);
+  };
+
+  const handleDownload = async () => {
+    try {
+      const token = localStorage.getItem(TOKEN_KEY);
+      const downloadUrl = `${API_URL}/api/files/download?path=${encodeURIComponent(file.path)}`;
+      const resp = await fetch(downloadUrl, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      if (!resp.ok) throw new Error('Download failed');
+      const blob = await resp.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = file.name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (err) {
+      console.error('Download failed', err);
+    }
+  };
+
   const formatTime = (time: number) => {
     const minutes = Math.floor(time / 60);
     const seconds = Math.floor(time % 60);
@@ -103,7 +285,7 @@ export default function AudioPlayer({ file, onClose }: AudioPlayerProps) {
         <div className="max-w-4xl mx-auto glass-card p-6">
           <audio
             ref={audioRef}
-            src={streamUrl}
+            src={streamSrc}
             preload="metadata"
           />
 
@@ -133,6 +315,7 @@ export default function AudioPlayer({ file, onClose }: AudioPlayerProps) {
           {/* Progress bar */}
           <div className="mb-4">
             <input
+              aria-label="Seek"
               type="range"
               min="0"
               max={duration || 0}
@@ -162,6 +345,38 @@ export default function AudioPlayer({ file, onClose }: AudioPlayerProps) {
                   </svg>
                 )}
               </motion.button>
+              {/* Playback rate */}
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={changePlaybackRate}
+                className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm transition-all"
+                title={`Playback rate: ${playbackRate}x`}
+              >
+                {playbackRate}x
+              </motion.button>
+
+              {/* Loop toggle */}
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={toggleLoop}
+                className={`p-2 rounded-lg ${isLoop ? 'bg-white/30' : 'bg-white/10'} text-white transition-all`}
+                title="Toggle loop"
+              >
+                {isLoop ? '🔁' : '↺'}
+              </motion.button>
+
+              {/* Download */}
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={handleDownload}
+                className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white/70 hover:text-white transition-all"
+                title="Download"
+              >
+                ⬇️
+              </motion.button>
             </div>
 
             {/* Volume control */}
@@ -184,6 +399,7 @@ export default function AudioPlayer({ file, onClose }: AudioPlayerProps) {
                 )}
               </motion.button>
               <input
+                aria-label="Volume"
                 type="range"
                 min="0"
                 max="1"
@@ -194,6 +410,8 @@ export default function AudioPlayer({ file, onClose }: AudioPlayerProps) {
               />
             </div>
           </div>
+          {/* Buffered indicator */}
+          <div className="mt-2 text-white/60 text-sm">Buffered: {bufferedPercent}%</div>
         </div>
       </motion.div>
 

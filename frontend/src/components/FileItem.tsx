@@ -66,8 +66,9 @@ export default function FileItem({ file, onOpen, onDownload, index }: FileItemPr
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
             onClick={handleDownload}
-            className="flex-shrink-0 p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white/70 hover:text-white transition-all opacity-0 group-hover:opacity-100"
+            className="flex-shrink-0 p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white/70 hover:text-white transition-all"
             title="Download"
+            aria-label={`Download ${file.name}`}
           >
             <svg
               className="w-5 h-5"

@@ -6,7 +6,7 @@ import os
 import mimetypes
 from pathlib import Path
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from fastapi import FastAPI, HTTPException, Depends, Header, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -78,25 +78,32 @@ class DirectoryListing(BaseModel):
 # Dependency Functions
 # ============================================================================
 
-async def verify_jwt_token(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict:
+async def verify_jwt_token(request: Request) -> dict:
     """
-    Verify JWT token from Authorization header.
-    
-    Args:
-        credentials: HTTP authorization credentials
-        
-    Returns:
-        Token payload dictionary
-        
-    Raises:
-        HTTPException: If token is invalid or expired
+    Verify JWT token. Accepts token from either the Authorization header
+    (Bearer) or from a `token` query parameter. This allows media elements
+    (which can't attach Authorization headers) to include the token in the
+    URL when necessary.
+
+    Returns payload dict on success or raises HTTPException(401) on failure.
     """
-    token = credentials.credentials
+    # 1) Try Authorization header first
+    auth_header = request.headers.get("authorization")
+    token = None
+    if auth_header and auth_header.lower().startswith('bearer '):
+        token = auth_header.split(None, 1)[1]
+
+    # 2) Fallback to query parameter `token` or `access_token`
+    if not token:
+        token = request.query_params.get('token') or request.query_params.get('access_token')
+
+    if not token:
+        raise HTTPException(status_code=401, detail="Missing authentication token")
+
     payload = verify_token(token)
-    
     if payload is None:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
-    
+
     return payload
 
 # ============================================================================
@@ -307,11 +314,27 @@ async def download_file(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error downloading file: {str(e)}")
 
+@app.post("/api/stream/token")
+async def create_stream_token(
+    path: str = Query(..., description="File path to create a short-lived stream token"),
+    payload: dict = Depends(verify_jwt_token)
+):
+    """
+    Create a short-lived stream token for the requested `path`.
+    Requires a valid user JWT (checked by `verify_jwt_token`). Returns a
+    JWT with a small expiration and claims {stream: True, path: <path>}.
+    """
+    expires = timedelta(seconds=60)
+    token = create_access_token(data={"stream": True, "path": path}, expires_delta=expires)
+    return {"token": token, "expires_in": int(expires.total_seconds())}
+
+
 @app.get("/api/stream/audio")
 async def stream_audio(
     path: str = Query(..., description="Audio file path"),
     range: Optional[str] = Header(None),
-    payload: dict = Depends(verify_jwt_token)
+    token: Optional[str] = Query(None, description="Short-lived stream token"),
+    request: Request = None
 ):
     """
     Stream audio file with range request support.
@@ -328,6 +351,17 @@ async def stream_audio(
         HTTPException: If file not found or not an audio file
     """
     try:
+        # Validate access: if a short-lived stream token is present, validate it
+        if token:
+            payload_token = verify_token(token)
+            if not payload_token or not payload_token.get('stream') or payload_token.get('path') != path:
+                raise HTTPException(status_code=401, detail="Invalid or expired stream token")
+        else:
+            # Fallback: require normal JWT via Authorization header
+            if request is None:
+                raise HTTPException(status_code=401, detail="Missing authentication token")
+            await verify_jwt_token(request)
+
         file_path = safe_path_join(settings.ROOT_DIRECTORY, path)
         
         if not file_path.exists():
@@ -385,7 +419,8 @@ async def stream_audio(
 async def stream_video(
     path: str = Query(..., description="Video file path"),
     range: Optional[str] = Header(None),
-    payload: dict = Depends(verify_jwt_token)
+    token: Optional[str] = Query(None, description="Short-lived stream token"),
+    request: Request = None
 ):
     """
     Stream video file with range request support.
@@ -402,6 +437,16 @@ async def stream_video(
         HTTPException: If file not found or not a video file
     """
     try:
+        # Validate access: prefer short-lived stream token
+        if token:
+            payload_token = verify_token(token)
+            if not payload_token or not payload_token.get('stream') or payload_token.get('path') != path:
+                raise HTTPException(status_code=401, detail="Invalid or expired stream token")
+        else:
+            if request is None:
+                raise HTTPException(status_code=401, detail="Missing authentication token")
+            await verify_jwt_token(request)
+
         file_path = safe_path_join(settings.ROOT_DIRECTORY, path)
         
         if not file_path.exists():
