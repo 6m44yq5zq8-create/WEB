@@ -48,9 +48,9 @@ python -m backend.main
 uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-Backend will be available at: `http://localhost:8000`
+Backend will be available at: `http://49.232.185.68:8000`
 
-API Documentation: `http://localhost:8000/docs`
+API Documentation: `http://49.232.185.68:8000/docs`
 
 ### 3. Frontend Setup
 
@@ -64,7 +64,7 @@ cd frontend
 npm install
 
 # (Optional) Configure API URL
-echo "NEXT_PUBLIC_API_URL=http://localhost:8000" > .env.local
+echo "NEXT_PUBLIC_API_URL=http://49.232.185.68:8000" > .env.local
 ```
 
 ### 4. Start Frontend
@@ -76,7 +76,7 @@ echo "NEXT_PUBLIC_API_URL=http://localhost:8000" > .env.local
 npm run dev
 ```
 
-Frontend will be available at: `http://localhost:3000`
+Frontend will be available at: `http://49.232.185.68:3000`
 
 #### Production Mode
 
@@ -90,7 +90,7 @@ npx serve out
 
 ## Usage
 
-1. **Open Browser**: Navigate to `http://localhost:3000` (or your frontend URL)
+1. **Open Browser**: Navigate to `http://49.232.185.68:3000` (or your frontend URL)
 
 2. **Login**: Enter the password you set in `backend/.env` file
 

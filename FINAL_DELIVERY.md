@@ -313,7 +313,7 @@ cp backend/.env.example backend/.env
 cd backend && python -m backend.main  # Terminal 1
 cd frontend && npm run dev             # Terminal 2
 
-# Visit http://localhost:3000
+# Visit http://49.232.185.68:3000
 ```
 
 ### 2. Production Deploy (30 minutes)

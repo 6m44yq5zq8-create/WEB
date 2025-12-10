@@ -33,7 +33,7 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+Open [http://49.232.185.68:3000](http://49.232.185.68:3000) in your browser.
 
 ### Build
 
@@ -56,7 +56,7 @@ npm start
 Create a `.env.local` file:
 
 ```env
-NEXT_PUBLIC_API_URL=http://localhost:8000
+NEXT_PUBLIC_API_URL=http://49.232.185.68:8000
 ```
 
 ## Project Structure

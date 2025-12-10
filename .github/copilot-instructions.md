@@ -23,7 +23,7 @@
   - 进入 `WEB/frontend`，安装依赖并启动：
     - `npm install`  
     - `npm run dev`  
-  - 默认访问 `http://localhost:3000`，通过 `NEXT_PUBLIC_API_URL` 指向后端。
+  - 默认访问 `http://49.232.185.68:3000`，通过 `NEXT_PUBLIC_API_URL` 指向后端。
 
 ## 项目特有约定与模式（请严格遵守）
 

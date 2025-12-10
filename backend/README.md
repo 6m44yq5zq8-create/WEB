@@ -114,7 +114,7 @@ Environment variables (in `.env`):
 | `JWT_SECRET_KEY` | Secret key for JWT signing | (auto-generated) |
 | `JWT_ALGORITHM` | JWT algorithm | `HS256` |
 | `JWT_EXPIRATION_HOURS` | Token expiration time | `24` |
-| `FRONTEND_URL` | Frontend URL for CORS | `http://localhost:3000` |
+| `FRONTEND_URL` | Frontend URL for CORS | `http://49.232.185.68:3000` |
 
 ## Development
 
@@ -124,5 +124,5 @@ uvicorn backend.main:app --reload
 ```
 
 API documentation available at:
-- Swagger UI: http://localhost:8000/docs
-- ReDoc: http://localhost:8000/redoc
+- Swagger UI: http://49.232.185.68:8000/docs
+- ReDoc: http://49.232.185.68:8000/redoc

@@ -114,7 +114,7 @@ python -m backend.main
 uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-The API will be available at `http://localhost:8000`
+The API will be available at `http://49.232.185.68:8000`
 
 ### Frontend Setup
 
@@ -131,7 +131,7 @@ npm install
 3. Configure environment (optional):
 ```bash
 # Create .env.local if you need custom API URL
-echo "NEXT_PUBLIC_API_URL=http://localhost:8000" > .env.local
+echo "NEXT_PUBLIC_API_URL=http://49.232.185.68:8000" > .env.local
 ```
 
 4. Run development server:
@@ -139,7 +139,7 @@ echo "NEXT_PUBLIC_API_URL=http://localhost:8000" > .env.local
 npm run dev
 ```
 
-The frontend will be available at `http://localhost:3000`
+The frontend will be available at `http://49.232.185.68:3000`
 
 5. Build for production:
 ```bash
@@ -161,19 +161,19 @@ Static files will be in the `out/` directory.
 | `JWT_SECRET_KEY` | JWT signing secret | (auto) |
 | `JWT_ALGORITHM` | JWT algorithm | `HS256` |
 | `JWT_EXPIRATION_HOURS` | Token expiration | `24` |
-| `FRONTEND_URL` | Frontend URL for CORS | `http://localhost:3000` |
+| `FRONTEND_URL` | Frontend URL for CORS | `http://49.232.185.68:3000` |
 
 ### Frontend Environment Variables
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `NEXT_PUBLIC_API_URL` | Backend API URL | `http://localhost:8000` |
+| `NEXT_PUBLIC_API_URL` | Backend API URL | `http://49.232.185.68:8000` |
 
 ## 📖 API Documentation
 
 Once the backend is running, visit:
-- **Swagger UI**: http://localhost:8000/docs
-- **ReDoc**: http://localhost:8000/redoc
+- **Swagger UI**: http://49.232.185.68:8000/docs
+- **ReDoc**: http://49.232.185.68:8000/redoc
 
 ## 🎬 Usage
 

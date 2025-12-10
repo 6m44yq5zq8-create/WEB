@@ -24,7 +24,7 @@ class Settings:
     JWT_EXPIRATION_HOURS: int = int(os.getenv("JWT_EXPIRATION_HOURS", "24"))
     
     # CORS settings
-    FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:3000")
+    FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://49.232.185.68:3000")
     
     # Ensure root directory exists
     def __init__(self):
