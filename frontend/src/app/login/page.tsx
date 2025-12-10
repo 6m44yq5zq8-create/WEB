@@ -106,18 +106,17 @@ export default function LoginPage() {
       await login(password, false);
       setIsLoading(false);
 
-      // If browser supports Passkey and we are in a secure context, pre-check registration options
+      // If browser supports Passkey and we are in a secure context, pre-check registration options.
+      // If supported and server returns options, show the registration modal so user can choose to create Passkey.
       const supportsPasskey = !!window.PublicKeyCredential && (window.isSecureContext || window.location.hostname === 'localhost');
       if (supportsPasskey) {
         try {
           const optsRes = await apiClient.get('/api/auth/passkey/register/options');
           if (optsRes.status === 200 && optsRes.data && optsRes.data.challenge) {
-            // Redirect to dedicated registration flow
-            router.push('/passkey/register');
+            setShowRegisterPrompt(true);
             return;
           }
         } catch (e) {
-          // If server-side options call fails (401/403), fall back to home
           console.warn('Passkey registration options not available', e);
         }
       }
