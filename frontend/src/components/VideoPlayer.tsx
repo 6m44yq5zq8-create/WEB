@@ -20,102 +20,17 @@ export default function VideoPlayer({ file, onClose }: VideoPlayerProps) {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [playbackRate, setPlaybackRate] = useState(1);
 
-  const token = typeof window !== 'undefined' ? localStorage.getItem('cloud_storage_token') : null;
-  const [streaming, setStreaming] = useState(false);
-
+  // Set up video source with token authentication
   useEffect(() => {
-    let mounted = true;
-    let mediaSource: MediaSource | null = null;
-    let sourceBuffer: SourceBuffer | null = null;
-    let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
-    let queue: Uint8Array[] = [];
+    const video = videoRef.current;
+    if (!video) return;
 
-    const cleanup = () => {
-      try { if (reader && (reader as any).cancel) (reader as any).cancel(); } catch {}
-      try {
-        if (sourceBuffer && mediaSource && mediaSource.readyState === 'open') {
-          if (!sourceBuffer.updating) mediaSource.endOfStream();
-        }
-      } catch {}
-      queue = [];
-      sourceBuffer = null;
-      if (mediaSource) try { URL.revokeObjectURL((videoRef.current as HTMLVideoElement).src); } catch {}
-      mediaSource = null;
-    };
-
-    const initMSE = async () => {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('cloud_storage_token') : null;
-      const url = `${API_URL}/api/stream/video?path=${encodeURIComponent(file.path)}`;
-      try {
-        const resp = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : undefined });
-        if (!mounted) return;
-
-        if (!resp.ok || !resp.body) {
-          const blob = await resp.blob();
-          const blobUrl = URL.createObjectURL(blob);
-          if (mounted && videoRef.current) videoRef.current.src = blobUrl;
-          return;
-        }
-
-        const contentType = resp.headers.get('content-type') || 'video/mp4';
-        if (!('MediaSource' in window)) {
-          const blob = await resp.blob();
-          const blobUrl = URL.createObjectURL(blob);
-          if (mounted && videoRef.current) videoRef.current.src = blobUrl;
-          return;
-        }
-
-        mediaSource = new MediaSource();
-        if (mounted && videoRef.current) videoRef.current.src = URL.createObjectURL(mediaSource);
-
-        mediaSource.addEventListener('sourceopen', async () => {
-          if (!mediaSource) return;
-          try {
-            sourceBuffer = mediaSource.addSourceBuffer(contentType as string);
-          } catch (err) {
-            const blob = await resp.blob();
-            const blobUrl = URL.createObjectURL(blob);
-            if (mounted && videoRef.current) videoRef.current.src = blobUrl;
-            return;
-          }
-
-          reader = resp.body!.getReader();
-
-          const appendNext = async (chunk: Uint8Array) => {
-            return new Promise<void>((resolve) => {
-              if (!sourceBuffer) return resolve();
-              const onUpdate = () => { sourceBuffer!.removeEventListener('updateend', onUpdate); resolve(); };
-              sourceBuffer.addEventListener('updateend', onUpdate);
-              try { sourceBuffer.appendBuffer(chunk as any); } catch (e) { resolve(); }
-            });
-          };
-
-          while (true) {
-            const { value, done } = await reader!.read();
-            if (value && value.length) {
-              if (sourceBuffer!.updating) queue.push(value);
-              else {
-                await appendNext(value);
-                while (queue.length) {
-                  const q = queue.shift()!;
-                  await appendNext(q);
-                }
-              }
-            }
-            if (done) break;
-          }
-
-          try { mediaSource.endOfStream(); } catch {}
-        });
-
-        setStreaming(true);
-      } catch (err) {
-        console.error('MSE video fetch error', err);
-      }
-    };
-
-    initMSE();
-    return () => { mounted = false; cleanup(); };
+    const token = typeof window !== 'undefined' ? localStorage.getItem('cloud_storage_token') : null;
+    // Include token in URL since video element can't set Authorization headers
+    const videoUrl = `${API_URL}/api/stream/video?path=${encodeURIComponent(file.path)}${token ? `&token=${encodeURIComponent(token)}` : ''}`;
+    
+    video.src = videoUrl;
+    video.load();
   }, [file.path]);
 
   useEffect(() => {

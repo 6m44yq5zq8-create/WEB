@@ -333,7 +333,7 @@ async def create_stream_token(
 async def stream_audio(
     path: str = Query(..., description="Audio file path"),
     range: Optional[str] = Header(None),
-    token: Optional[str] = Query(None, description="Short-lived stream token"),
+    token: Optional[str] = Query(None, description="JWT authentication token"),
     request: Request = None
 ):
     """
@@ -342,7 +342,8 @@ async def stream_audio(
     Args:
         path: Relative path to audio file
         range: Range header for seeking
-        payload: JWT token payload
+        token: JWT token (can be passed via query parameter for media elements)
+        request: Request object for Authorization header fallback
         
     Returns:
         Streaming response with audio data
@@ -351,13 +352,13 @@ async def stream_audio(
         HTTPException: If file not found or not an audio file
     """
     try:
-        # Validate access: if a short-lived stream token is present, validate it
+        # Validate access: accept token from query parameter or Authorization header
         if token:
             payload_token = verify_token(token)
-            if not payload_token or not payload_token.get('stream') or payload_token.get('path') != path:
-                raise HTTPException(status_code=401, detail="Invalid or expired stream token")
+            if not payload_token:
+                raise HTTPException(status_code=401, detail="Invalid or expired token")
         else:
-            # Fallback: require normal JWT via Authorization header
+            # Fallback: require JWT via Authorization header
             if request is None:
                 raise HTTPException(status_code=401, detail="Missing authentication token")
             await verify_jwt_token(request)
@@ -419,7 +420,7 @@ async def stream_audio(
 async def stream_video(
     path: str = Query(..., description="Video file path"),
     range: Optional[str] = Header(None),
-    token: Optional[str] = Query(None, description="Short-lived stream token"),
+    token: Optional[str] = Query(None, description="JWT authentication token"),
     request: Request = None
 ):
     """
@@ -428,7 +429,8 @@ async def stream_video(
     Args:
         path: Relative path to video file
         range: Range header for seeking
-        payload: JWT token payload
+        token: JWT token (can be passed via query parameter for media elements)
+        request: Request object for Authorization header fallback
         
     Returns:
         Streaming response with video data
@@ -437,11 +439,11 @@ async def stream_video(
         HTTPException: If file not found or not a video file
     """
     try:
-        # Validate access: prefer short-lived stream token
+        # Validate access: accept token from query parameter or Authorization header
         if token:
             payload_token = verify_token(token)
-            if not payload_token or not payload_token.get('stream') or payload_token.get('path') != path:
-                raise HTTPException(status_code=401, detail="Invalid or expired stream token")
+            if not payload_token:
+                raise HTTPException(status_code=401, detail="Invalid or expired token")
         else:
             if request is None:
                 raise HTTPException(status_code=401, detail="Missing authentication token")
