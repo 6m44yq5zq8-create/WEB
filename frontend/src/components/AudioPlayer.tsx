@@ -252,7 +252,7 @@ export default function AudioPlayer({ file, onClose }: AudioPlayerProps) {
               {/* Visual track centered inside a taller container so thumb aligns */}
               <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-2 rounded-full bg-white/10" />
               <div className="absolute left-0 top-1/2 -translate-y-1/2 h-2 rounded-full bg-white/30 transition-[width] duration-200 buffered-bar" />
-              <div className="absolute left-0 top-1/2 -translate-y-1/2 h-2 rounded-full bg-white/70 transition-[width] duration-200 played-bar" />
+              <div className="absolute left-0 top-1/2 -translate-y-1/2 h-2 rounded-full bg-white/70 played-bar" />
               <input
                 aria-label="Seek"
                 type="range"
@@ -333,7 +333,7 @@ export default function AudioPlayer({ file, onClose }: AudioPlayerProps) {
               <div className="relative w-24 h-6">
                 <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-2 rounded-full bg-white/10" />
                 <div
-                  className="absolute left-0 top-1/2 -translate-y-1/2 h-2 rounded-full bg-white/70 transition-[width] duration-200 volume-filled"
+                  className="absolute left-0 top-1/2 -translate-y-1/2 h-2 rounded-full bg-white/70 volume-filled"
                 />
                 <input
                   aria-label="Volume"
@@ -398,11 +398,13 @@ export default function AudioPlayer({ file, onClose }: AudioPlayerProps) {
         .played-bar {
           width: ${playedPercent}%;
           z-index: 2;
+          transition: none; /* immediate update to follow slider */
         }
 
         .volume-filled {
           width: ${volumePercent}%;
           z-index: 1;
+          transition: none; /* immediate update on volume slider */
         }
 
         .slider::-webkit-slider-thumb {
