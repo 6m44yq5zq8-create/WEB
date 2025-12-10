@@ -333,7 +333,7 @@ async def create_stream_token(
 async def stream_audio(
     path: str = Query(..., description="Audio file path"),
     range: Optional[str] = Header(None),
-    token: Optional[str] = Query(None, description="JWT authentication token"),
+    token: Optional[str] = Query(None, description="JWT authentication token or short-lived stream token"),
     request: Request = None
 ):
     """
@@ -424,7 +424,7 @@ async def stream_audio(
 async def stream_video(
     path: str = Query(..., description="Video file path"),
     range: Optional[str] = Header(None),
-    token: Optional[str] = Query(None, description="JWT authentication token"),
+    token: Optional[str] = Query(None, description="JWT authentication token or short-lived stream token"),
     request: Request = None
 ):
     """
