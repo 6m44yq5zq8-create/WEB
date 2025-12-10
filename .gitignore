@@ -212,6 +212,7 @@ out/
 node_modules/
 *.tsbuildinfo
 next-env.d.ts
+frontend-static-files.zip
 
 # Environment variables
 .env
