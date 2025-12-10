@@ -197,6 +197,7 @@ export default function AudioPlayer({ file, onClose }: AudioPlayerProps) {
   }, [isLoop]);
 
   const bufferPercent = duration ? Math.min(100, (bufferedEnd / duration) * 100) : 0;
+  const playedPercent = duration ? Math.min(100, (currentTime / duration) * 100) : 0;
   const volumePercent = Math.round((isMuted ? 0 : volume) * 100);
 
   const formatTime = (time: number) => {
@@ -249,6 +250,7 @@ export default function AudioPlayer({ file, onClose }: AudioPlayerProps) {
               {/* Visual track centered inside a taller container so thumb aligns */}
               <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-2 rounded-full bg-white/10" />
               <div className="absolute left-0 top-1/2 -translate-y-1/2 h-2 rounded-full bg-white/30 transition-[width] duration-200 buffered-bar" />
+              <div className="absolute left-0 top-1/2 -translate-y-1/2 h-2 rounded-full bg-white/70 transition-[width] duration-200 played-bar" />
               <input
                 aria-label="Seek"
                 type="range"
@@ -388,10 +390,17 @@ export default function AudioPlayer({ file, onClose }: AudioPlayerProps) {
 
         .buffered-bar {
           width: ${bufferPercent}%;
+          z-index: 1;
+        }
+
+        .played-bar {
+          width: ${playedPercent}%;
+          z-index: 2;
         }
 
         .volume-filled {
           width: ${volumePercent}%;
+          z-index: 1;
         }
 
         .slider::-webkit-slider-thumb {
