@@ -179,15 +179,15 @@ export default function HomePage() {
                 const formData = new FormData();
                 formData.append('file', f);
                 try {
-                  await apiClient.post(`/api/files/upload?path=${encodeURIComponent(currentPath)}`, formData, {
-                    headers: { 'Content-Type': 'multipart/form-data' }
-                  });
+                  await apiClient.post(`/api/files/upload`, formData, { params: { path: currentPath } });
                   await loadFiles();
                   alert('File uploaded');
                 } catch (err: any) {
                   console.error('Upload failed', err);
                   alert('Upload failed: ' + (err?.response?.data?.detail || err?.message || 'unknown'));
                 }
+                // Reset input value to allow re-upload the same file if needed
+                e.currentTarget.value = '';
               }}
             />
             <motion.button

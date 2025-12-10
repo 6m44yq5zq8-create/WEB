@@ -629,6 +629,7 @@ async def stream_audio(
 @app.post('/api/files/create-folder')
 @limiter.limit('10/minute')
 async def create_folder(
+    request: Request,
     parent: Optional[str] = Query('', description='Parent folder path (relative)'),
     name: str = Body(..., embed=True, description='New folder name'),
     payload: dict = Depends(verify_jwt_token)
@@ -663,6 +664,7 @@ async def create_folder(
 @app.post('/api/files/upload')
 @limiter.limit('20/minute')
 async def upload_file(
+    request: Request,
     path: Optional[str] = Query('', description='Parent directory to upload into'),
     file: UploadFile = File(...),
     payload: dict = Depends(verify_jwt_token)
