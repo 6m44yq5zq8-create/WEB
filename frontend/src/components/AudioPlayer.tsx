@@ -77,6 +77,8 @@ export default function AudioPlayer({ file, onClose }: AudioPlayerProps) {
   }, [file.path]);
   const [playbackRate, setPlaybackRate] = useState(1);
   const [isLoop, setIsLoop] = useState(false);
+  const [isBuffering, setIsBuffering] = useState(false);
+  const [isError, setIsError] = useState(false);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -94,12 +96,25 @@ export default function AudioPlayer({ file, onClose }: AudioPlayerProps) {
     };
     const handleEnded = () => setIsPlaying(false);
     const handleRateChange = () => setPlaybackRate(audio.playbackRate);
+    const handleWaiting = () => setIsBuffering(true);
+    const handlePlayingEvent = () => setIsBuffering(false);
+    const handleStalled = () => setIsBuffering(true);
+    const handleSuspend = () => setIsBuffering(true);
+    const handleError = () => {
+      setIsBuffering(false);
+      setIsError(true);
+    };
 
     audio.addEventListener('timeupdate', updateTime);
     audio.addEventListener('loadedmetadata', updateDuration);
     audio.addEventListener('progress', updateBuffer);
     audio.addEventListener('ended', handleEnded);
-    audio.addEventListener('ratechange', handleRateChange);
+  audio.addEventListener('ratechange', handleRateChange);
+  audio.addEventListener('waiting', handleWaiting);
+  audio.addEventListener('playing', handlePlayingEvent);
+  audio.addEventListener('stalled', handleStalled);
+  audio.addEventListener('suspend', handleSuspend);
+  audio.addEventListener('error', handleError);
 
     updateBuffer();
 
@@ -118,6 +133,11 @@ export default function AudioPlayer({ file, onClose }: AudioPlayerProps) {
   audio.removeEventListener('progress', updateBuffer);
   audio.removeEventListener('ended', handleEnded);
   audio.removeEventListener('ratechange', handleRateChange);
+  audio.removeEventListener('waiting', handleWaiting);
+  audio.removeEventListener('playing', handlePlayingEvent);
+  audio.removeEventListener('stalled', handleStalled);
+  audio.removeEventListener('suspend', handleSuspend);
+  audio.removeEventListener('error', handleError);
       window.removeEventListener('keydown', handleKey as any);
     };
   }, []);
@@ -133,6 +153,11 @@ export default function AudioPlayer({ file, onClose }: AudioPlayerProps) {
     }
     setIsPlaying(!isPlaying);
   };
+
+  // When user starts playing (either click or programmatic), clear error state
+  useEffect(() => {
+    if (isPlaying && isError) setIsError(false);
+  }, [isPlaying, isError]);
 
   const handleSeek = (e: ChangeEvent<HTMLInputElement>) => {
     const audio = audioRef.current;
@@ -199,6 +224,7 @@ export default function AudioPlayer({ file, onClose }: AudioPlayerProps) {
   const bufferPercent = duration ? Math.min(100, (bufferedEnd / duration) * 100) : 0;
   const playedPercent = duration ? Math.min(100, (currentTime / duration) * 100) : 0;
   const volumePercent = Math.round((isMuted ? 0 : volume) * 100);
+  const showSpinner = isBuffering && isPlaying;
 
   const displayName = file.name?.replace(/\.[^.]+$/, '') || file.name;
 
@@ -275,7 +301,17 @@ export default function AudioPlayer({ file, onClose }: AudioPlayerProps) {
                 onClick={togglePlay}
                 className="p-4 rounded-full bg-white/20 hover:bg-white/30 text-white transition-all"
               >
-                {isPlaying ? (
+                {showSpinner ? (
+                  <svg className="w-6 h-6 animate-spin text-white/90" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-80" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                  </svg>
+                ) : isError ? (
+                  <svg className="w-6 h-6 text-red-400" viewBox="0 0 24 24" fill="none" role="img" aria-label="加载失败">
+                    <path stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M12 8v4m0 4h.01" />
+                    <path stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M21 12A9 9 0 113 12a9 9 0 0118 0z" />
+                  </svg>
+                ) : isPlaying ? (
                   <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
                     <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
                   </svg>
