@@ -30,6 +30,7 @@ export default function HomePage() {
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -132,22 +133,23 @@ export default function HomePage() {
       <motion.div
         initial={{ y: -20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        className="glass-card p-6 mb-6"
+        className="glass-card p-4 md:p-6 mb-6 overflow-visible"
       >
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-4">
           <div className="flex items-center space-x-3">
-            <div className="text-4xl">☁️</div>
+            <div className="text-3xl md:text-4xl">☁️</div>
             <div>
               <h1 className="text-2xl md:text-3xl font-bold text-white">
                 Personal Cloud Storage
               </h1>
-              <p className="text-white/70 text-sm">
+              <p className="text-white/70 text-sm hidden sm:block">
                 Your files, anywhere, anytime
               </p>
             </div>
           </div>
           
-          <motion.div className="flex items-center space-x-3">
+          {/* Desktop buttons */}
+          <motion.div className="hidden md:flex items-center space-x-3">
             <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
@@ -245,7 +247,49 @@ export default function HomePage() {
             >
               Create Passkey
             </motion.button>
-          </motion.div>
+            </motion.div>
+
+            {/* Mobile menu (hamburger) */}
+            <div className="md:hidden relative">
+              <button
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="glass-button-sm inline-flex items-center justify-center p-2"
+                aria-label="Open menu"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6 text-white">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              </button>
+            {mobileMenuOpen && (
+              <div className="absolute right-0 mt-2 w-48 max-h-64 overflow-auto bg-white/5 border border-white/20 rounded shadow-lg p-2 z-50">
+                  <div className="flex flex-col space-y-2">
+                    <button onClick={() => { setMobileMenuOpen(false); logout(); }} className="glass-button-sm text-white text-left w-full">Logout</button>
+                    <button onClick={() => { setShowNewFolder(true); setMobileMenuOpen(false); }} className="glass-button-sm text-white text-left w-full">New Folder</button>
+                    <button onClick={() => { fileInputRef.current?.click(); setMobileMenuOpen(false); }} className="glass-button-sm text-white text-left w-full">Upload</button>
+                    <button onClick={async () => {
+                      setMobileMenuOpen(false);
+                      try {
+                        if (!window.PublicKeyCredential || !(window.isSecureContext || window.location.hostname === 'localhost')) {
+                          alert('Passkey registration requires a secure context (https) or localhost.');
+                          return;
+                        }
+                        const res = await apiClient.get('/api/auth/passkey/register/options');
+                        const opts = res.data;
+                        if (!opts || !opts.challenge) { alert('Cannot create Passkey: registration not allowed or server returned no options.'); return; }
+                        const publicKey: any = { ...opts, challenge: base64urlToBuffer(opts.challenge), user: { ...opts.user, id: base64urlToBuffer(opts.user.id) } };
+                        if (opts.excludeCredentials && Array.isArray(opts.excludeCredentials)) { publicKey.excludeCredentials = opts.excludeCredentials.map((c: any) => ({ ...c, id: base64urlToBuffer(c.id) })); }
+                        const cred: any = await navigator.credentials.create({ publicKey });
+                        const clientDataJSON = bufferToBase64url(cred.response.clientDataJSON);
+                        const attestationObject = bufferToBase64url((cred as any).response.attestationObject);
+                        const rawId = bufferToBase64url(cred.rawId);
+                        await apiClient.post('/api/auth/passkey/register/verify', { id: cred.id, rawId, type: cred.type, response: { clientDataJSON, attestationObject } });
+                        alert('Passkey created successfully.');
+                      } catch (err: any) { console.error('Create passkey failed:', err); alert('Passkey creation failed: ' + (err?.response?.data?.detail || err?.message || 'unknown')); }
+                    }} className="glass-button text-white text-left w-full">Create Passkey</button>
+                  </div>
+                </div>
+              )}
+            </div>
         </div>
 
         {/* Breadcrumb */}
